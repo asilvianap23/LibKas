@@ -11,11 +11,13 @@
         <!-- Fonts -->
         <link rel="preconnect" href="https://fonts.bunny.net">
         <link href="https://fonts.bunny.net/css?family=figtree:400,500,600&display=swap" rel="stylesheet" />
-
+        <!-- Select2 CSS -->
+        <link href="https://cdn.jsdelivr.net/npm/select2@4.0.13/dist/css/select2.min.css" rel="stylesheet" />
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
         <!-- Scripts -->
         @vite(['resources/css/app.css', 'resources/js/app.js'])
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="{{ asset('css/style.css') }}">
+        <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+        <link rel="stylesheet" href="{{ asset('css/style.css') }}">
     </head>
     <body class="font-sans antialiased">
     <!-- resources/views/layouts/app.blade.php -->
@@ -50,34 +52,59 @@
         </div>
     </div>
 
-
-        <script>
-            function toggleSidebar() {
-                let sidebar = document.getElementById('sidebar');
-                let mainContent = document.getElementById('mainContent');
-                let toggleButton = document.getElementById('toggleSidebarBtn');
-                
-                sidebar.classList.toggle('closed');
-                mainContent.classList.toggle('expanded');  // Add 'expanded' class
-
-                // Toggle the visibility of the button
-                if (sidebar.classList.contains('closed')) {
-                    toggleButton.style.display = 'block'; // Show the button when sidebar is closed
-                    toggleButton.innerHTML = "→"; // Show right arrow when sidebar is closed
-                } else {
-                    toggleButton.style.display = 'none'; // Hide the button when sidebar is open
-                    toggleButton.innerHTML = "←"; // Show left arrow when sidebar is open
-                }
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.0.13/dist/js/select2.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script>
+        flatpickr("#tanggal_event", {
+            mode: "multiple", // memungkinkan memilih beberapa tanggal
+            dateFormat: "Y-m-d", // format tanggal
+            onClose: function(selectedDates, dateStr, instance) {
+                // Menyimpan tanggal yang dipilih dalam format string terpisah koma
+                document.querySelector("#tanggal_event").value = selectedDates.map(function(date) {
+                    return date.toISOString().split('T')[0];
+                }).join(',');
             }
+        });
 
-            // Show the toggle button when the page loads if the sidebar is closed
-            document.addEventListener("DOMContentLoaded", function() {
-                let sidebar = document.getElementById('sidebar');
-                let toggleButton = document.getElementById('toggleSidebarBtn');
-                if (sidebar.classList.contains('closed')) {
-                    toggleButton.style.display = 'block'; // Show the button if sidebar is closed
-                }
+        document.addEventListener("DOMContentLoaded", function () {
+            // Inisialisasi Select2
+            $('.select2').select2({
+                placeholder: 'Pilih opsi...',
+                allowClear: true
             });
-        </script>
+    
+            // Pastikan toggle sidebar tetap berfungsi
+            let sidebar = document.getElementById('sidebar');
+            let toggleButton = document.getElementById('toggleSidebarBtn');
+    
+            if (sidebar.classList.contains('closed')) {
+                toggleButton.style.display = 'block';
+                toggleButton.innerHTML = "→";
+            } else {
+                toggleButton.style.display = 'none';
+                toggleButton.innerHTML = "←";
+            }
+        });
+    
+        // Fungsi toggle sidebar
+        function toggleSidebar() {
+            let sidebar = document.getElementById('sidebar');
+            let mainContent = document.getElementById('mainContent');
+            let toggleButton = document.getElementById('toggleSidebarBtn');
+            
+            sidebar.classList.toggle('closed');
+            mainContent.classList.toggle('expanded');
+    
+            if (sidebar.classList.contains('closed')) {
+                toggleButton.style.display = 'block';
+                toggleButton.innerHTML = "→";
+            } else {
+                toggleButton.style.display = 'none';
+                toggleButton.innerHTML = "←";
+            }
+        }
+    </script>
+    @stack('scripts')
     </body>
 </html>

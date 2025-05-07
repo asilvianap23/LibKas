@@ -14,7 +14,7 @@
                 <!-- Navigation Links -->
                 <div class="hidden space-x-8 sm:-my-px sm:ms-10 sm:flex items-center text-lg font-semibold text-gray-900 dark:text-gray-100">
                     <span class="bg-gradient-to-r from-blue-500 to-purple-500 text-transparent bg-clip-text">
-                        Kas Forum Perpustakaan
+                        Forum Perpustakaan Perguruan Tinggi Muhammadiyah Aisyiyah
                     </span>
                 </div>
                 

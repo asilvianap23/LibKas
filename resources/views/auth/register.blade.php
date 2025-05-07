@@ -20,7 +20,7 @@
             <x-input-label for="instansi" :value="__('Instansi')" />
             <x-text-input id="instansi" class="block mt-1 w-full" type="text" name="instansi" :value="old('instansi')" required autocomplete="instansi" />
             <x-input-error :messages="$errors->get('instansi')" class="mt-2" />
-        </div>        
+        </div>              
 
         <!-- Password -->
         <div class="mt-4">

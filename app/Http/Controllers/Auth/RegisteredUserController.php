@@ -30,6 +30,7 @@ class RegisteredUserController extends Controller
      */
     public function store(Request $request): RedirectResponse
     {
+        // Validasi input
         $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'lowercase', 'email', 'max:255', 'unique:'.User::class],
@@ -37,6 +38,12 @@ class RegisteredUserController extends Controller
             'instansi' => ['required', 'string', 'max:255'],
         ]);
 
+        // Cek apakah instansi sudah terdaftar
+        if (User::where('instansi', $request->instansi)->exists()) {
+            return back()->withErrors(['instansi' => 'Instansi ini sudah terdaftar, silakan pilih instansi lain.']);
+        }
+
+        // Jika validasi berhasil, buat pengguna baru
         $user = User::create([
             'name' => $request->name,
             'email' => $request->email,
@@ -44,8 +51,10 @@ class RegisteredUserController extends Controller
             'instansi' => $request->instansi,
         ]);
 
+        // Memicu event pendaftaran
         event(new Registered($user));
 
+        // Login otomatis setelah pendaftaran
         Auth::login($user);
 
         return redirect(RouteServiceProvider::HOME);

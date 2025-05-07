@@ -18,7 +18,7 @@
         <div class="min-h-screen flex flex-col sm:justify-center items-center pt-6 sm:pt-0 bg-gray-100 dark:bg-gray-900">
             <div>
                 <a href="{{ route('dashboard') }}">
-                    <img src="{{ asset('images/logo.png') }}" alt="Logo" class="block h-16 w-auto">
+                    <img src="{{ asset('images/logo.png') }}" alt="Logo" class="block h-24 w-auto">
                 </a>
                 
             </div>

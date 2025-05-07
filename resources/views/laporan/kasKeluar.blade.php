@@ -49,8 +49,8 @@
         </form>
 
         <!-- Tabel Kas Keluar -->
-        <div class="overflow-x-auto">
-            <table class="min-w-full table-auto border-collapse">
+        <div class="bg-white shadow-lg rounded-lg overflow-hidden">
+            <table class="table-custom w-full">
                 <thead>
                     <tr class="bg-blue-600 text-white">
                         <th class="px-6 py-3 text-left text-sm font-medium">Tanggal</th>

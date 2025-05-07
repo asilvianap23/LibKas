@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 class Kas extends Model
 {
     use HasFactory;
-    protected $fillable = ['amount', 'type', 'description', 'user_id', 'is_verified', 'bukti'];
+    protected $fillable = ['amount', 'type', 'description', 'user_id', 'is_verified', 'bukti', 'instansi', 'pic', 'wa', 'email'];
 
     public function user()
     {

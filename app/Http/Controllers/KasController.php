@@ -3,48 +3,77 @@
 namespace App\Http\Controllers;
 
 use App\Models\Kas;
+use App\Mail\SendPDFMail;
+use App\Mail\KasMasukMail;
 use Illuminate\Http\Request;
+use App\Mail\KasMasukNotification;
+use Exception;
+use Barryvdh\DomPDF\Facade\Pdf;
+use App\Http\Controllers\PDFController;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 
 class KasController extends Controller
 {
-    // Menampilkan halaman kas (masuk dan keluar)
+   
     public function index()
     {
-        // Mendapatkan data kas masuk dan kas keluar dengan pagination
         $kasMasuk = Kas::where('type', 'masuk')
-        ->where('user_id', auth()->id()) // Filter berdasarkan user ID
-        ->paginate(10); // Menambahkan paginate
-        $kasKeluar = Kas::where('type', 'keluar')->paginate(10); // Menambahkan paginate
-        $kas = Kas::paginate(10); // Data utama yang juga dipaginasi
+        ->where('user_id', auth()->id()) 
+        ->paginate(10); 
+        $kasKeluar = Kas::where('type', 'keluar')->paginate(10);
+        $kas = Kas::paginate(10);
     
         return view('kas.index', compact('kasMasuk', 'kasKeluar', 'kas'));
     }
-        // Menyimpan transaksi Kas Masuk
-        public function storeKasMasuk(Request $request)
-        {
-            // Validasi input
-            $request->validate([
-                'amount' => 'required|numeric|min:1',
-                'description' => 'nullable|string|max:255',
-                'photo' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
-            ]);
     
-            // Simpan kas masuk dengan status belum diverifikasi
+    public function storeKasMasuk(Request $request)
+    { 
+        $validatedData = $request->validate([
+            'amount' => 'required|in:150000,250000,500000,1000000',
+            'description' => 'nullable|string|max:255',
+            'photo' => 'nullable|file|mimes:jpeg,png,jpg,gif,pdf|max:2048',
+            'pic' => 'nullable|string|max:255',
+            'wa' => 'nullable|string|max:15',
+        ]);
+    
+        DB::beginTransaction();
+        try {
             $kas = new Kas();
-            $kas->amount = $request->amount;
-            $kas->description = $request->description;
-            if ($request->hasFile('photo')) {
-                $kas->photo = $request->file('photo')->store('bukti_transfer');
-            }
-            $kas->user_id = auth()->id(); // User yang menambahkan kas
-            $kas->is_verified = false; // Kas belum diverifikasi
-            $kas->save();
-            session()->flash('success', 'Data berhasil disimpan!');
-            return redirect()->route('kas.index')->with('success', 'Kas masuk berhasil disimpan dan menunggu verifikasi');
-        }
+            $kas->amount = $validatedData['amount'];
+            $kas->description = $validatedData['description'] ?? null;
+            $kas->pic = $validatedData['pic'] ?? null;
+            $kas->wa = $validatedData['wa'] ?? null;
 
-    // Menampilkan halaman Kas Keluar
+            $kas->instansi = auth()->user()->instansi;
+            $kas->email = auth()->user()->email;          
+    
+            $kas->user_id = auth()->id();
+            $kas->is_verified = false;
+
+            if ($request->hasFile('photo')) {
+                $photoStoredPath = $request->file('photo')->store('bukti_transfer', 'public');
+                $kas->photo = $photoStoredPath;
+            }
+    
+            $kas->save();
+ 
+            if (!empty($kas->email)) {
+                $photoPath = isset($photoStoredPath) ? storage_path('app/public/' . $photoStoredPath) : null;
+                Mail::to($kas->email)->send(new KasMasukMail($kas, $photoPath));
+            }
+    
+            DB::commit();
+            return redirect()->route('kas.index')->with('success', 'Kas masuk berhasil disimpan dan menunggu verifikasi.');
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error($e->getMessage());
+            return redirect()->back()->with('error', 'Ada kesalahan ketika menyimpan data!');
+        }
+    }
+
     public function showKasKeluar()
     {
         $kasKeluar = Kas::where('type', 'keluar')->get();
@@ -54,135 +83,131 @@ class KasController extends Controller
 
     public function storeKasKeluar(Request $request)
     {
-        // Mendapatkan total kas masuk yang sudah diverifikasi
         $totalKasMasuk = Kas::where('type', 'masuk')
             ->where('is_verified', 1)
             ->sum('amount');
     
-        // Mendapatkan total kas keluar yang sudah disimpan
         $totalKasKeluar = Kas::where('type', 'keluar')->sum('amount');
     
-        // Validasi apakah kas cukup
         if ($totalKasMasuk - $totalKasKeluar < $request->amount) {
             return back()->withErrors(['amount' => 'Jumlah pengeluaran melebihi saldo kas yang tersedia.']);
         }
     
-        // Menyimpan data kas keluar
         $kas = Kas::create([
             'amount' => $request->amount,
             'description' => $request->description,
             'type' => 'keluar',
             'user_id' => Auth::id(),
-            'is_verified' => 1,  // Kas keluar sudah diverifikasi
+            'is_verified' => 1, 
         ]);
     
-        // Menyimpan file jika ada
         if ($request->hasFile('files')) {
             $filePaths = [];
             foreach ($request->file('files') as $file) {
-                // Menyimpan file di folder kas_files
                 $filePath = $file->store('kas_files', 'public');
-                $filePaths[] = $filePath; // Menambahkan path file ke array
+                $filePaths[] = $filePath; 
             }
     
-            // Menyimpan file paths ke kolom 'bukti' pada tabel kas
             $kas->update([
                 'bukti' => json_encode($filePaths),
             ]);
         }
     
-        // Redirect ke halaman kas keluar dengan pesan sukses
         return redirect()->route('kas.keluar.index')->with('success', 'Kas keluar berhasil disimpan.');
     }
     
-    
     public function showKasMasuk(Request $request)
     {
-        // Ambil parameter dari query string
-        $limit = $request->input('limit', 10); // Default 10 jika 'limit' tidak ada
-        $search = $request->input('search');  // Pencarian berdasarkan deskripsi
-        $status = $request->input('status'); // Status filter
-        $type = $request->input('type', 'masuk');  // Default ke 'masuk' jika 'type' tidak ada
-    
-        // Mulai query
+     
+        $limit = $request->input('limit', 10);  
+        $search = $request->input('search');    
+        $status = $request->input('status');    
+        $type = $request->input('type', 'masuk');  
+     
         $query = Kas::query();
-    
-        // Filter berdasarkan status jika dipilih
+     
         if ($status === 'verified') {
-            $query->where('is_verified', 1); // Sudah Diverifikasi
+            $query->where('is_verified', 1); 
         } elseif ($status === 'pending') {
-            $query->where('is_verified', 0)->whereNull('rejected_at'); // Menunggu Verifikasi
+            $query->where('is_verified', 0)->whereNull('rejected_at');
         } elseif ($status === 'rejected') {
-            $query->whereNotNull('rejected_at'); // Ditolak
+            $query->whereNotNull('rejected_at'); 
         }
-    
-        // Filter berdasarkan tipe (masuk/keluar)
+     
         $query->where('type', $type);
-    
-        // Filter berdasarkan pencarian deskripsi
+     
         if (!empty($search)) {
-            $query->where('description', 'like', '%' . $search . '%');
+            $query->where(function ($query) use ($search) {
+                $query->where('description', 'like', '%' . $search . '%')
+                      ->orWhere('amount', 'like', '%' . $search . '%')
+                      ->orWhere('pic', 'like', '%' . $search . '%')
+                      ->orWhere('instansi', 'like', '%' . $search . '%');
+            });
         }
-    
-        // Ambil data dengan pagination menggunakan limit
+     
         $kas = $query->latest()->paginate($limit);
-    
-        // Return ke view dengan data kas
+     
         return view('kas.masuk.index', compact('kas'));
     }
-    
-                
-    // Verifikasi Kas Masuk
+             
     public function verifyKasMasuk($id)
     {
-        // Temukan kas yang belum diverifikasi
-        $kas = Kas::findOrFail($id);
-
-        // Tandai kas tersebut sebagai sudah diverifikasi
+        $kas = Kas::findOrFail($id); 
+    
         $kas->is_verified = true;
         $kas->save();
-
-        return redirect()->route('kas.masuk.index')->with('success', 'Kas masuk berhasil diverifikasi');
+    
+        $pdfSertifikatPath = storage_path("app/public/sertifikat_{$kas->id}.pdf");
+        $pdfKwitansiPath = storage_path("app/public/kwitansi_{$kas->id}.pdf");
+    
+        $pdfSertifikat = Pdf::loadView('emails.sertifikat', compact('kas'));
+        $pdfSertifikat->save($pdfSertifikatPath);
+    
+        $pdfKwitansi = Pdf::loadView('emails.kwitansi', compact('kas'));
+        $pdfKwitansi->save($pdfKwitansiPath);
+    
+        if (!empty($kas->email)) {
+            Mail::to($kas->email)->send(new SendPDFMail($kas, $pdfSertifikatPath, $pdfKwitansiPath)); // Pastikan $kas dikirim ke email
+        }
+    
+        return redirect()->route('kas.masuk.index')->with('success', 'Kas masuk berhasil diverifikasi dan email terkirim.');
     }
-
-    // Menolak Kas Masuk
-    public function rejectKasMasuk($id)
+    
+    public function rejectKasMasuk(Request $request, $id)
     {
         $kas = Kas::findOrFail($id);
-
-        // Menandai kas sebagai ditolak
+    
         $kas->is_verified = false;
-        $kas->rejected_at = now();  // Menandakan waktu penolakan
+        $kas->rejected_at = now();  
+    
+        if ($request->has('rejected_reason')) {
+            $kas->rejected_reason = $request->input('rejected_reason');
+        }  
+    
         $kas->save();
-
+    
         return redirect()->route('kas.masuk.index')->with('success', 'Kas berhasil ditolak.');
     }
-
-    // Menangani proses verifikasi atau penolakan Kas Masuk
+    
     public function processVerificationKasMasuk(Request $request, $id)
     {
         $kas = Kas::findOrFail($id);
-    
-        // Validasi input apakah aksi yang dipilih adalah verifikasi atau penolakan
+
         $request->validate([
             'action' => 'required|in:verify,reject',
         ]);
     
         if ($request->action == 'verify') {
-            // Jika verifikasi, set status menjadi terverifikasi dan catat waktu verifikasi
             $kas->is_verified = true;
-            $kas->verified_at = now();  // Waktu verifikasi
-            $kas->rejected_at = null;   // Pastikan rejected_at kosong jika diverifikasi
+            $kas->verified_at = now(); 
+            $kas->rejected_at = null;  
         } elseif ($request->action == 'reject') {
-            // Jika ditolak, set status menjadi tidak terverifikasi dan catat waktu penolakan
             $kas->is_verified = false;
-            $kas->rejected_at = now();  // Waktu penolakan
+            $kas->rejected_at = now(); 
         }
-    
-        // Simpan perubahan status
+
         $kas->save();
     
-        // Redirect ke halaman utama dengan pesan sukses atau gagal
         return redirect()->route('kas.index')->with('status', $request->action == 'verify' ? 'Kas berhasil diverifikasi.' : 'Kas ditolak.');
     }
     public function laporanKasMasuk(Request $request)
@@ -190,10 +215,10 @@ class KasController extends Controller
         $startDate = $request->start_date;
         $endDate = $request->end_date;
         $search = $request->search;
-        $limit = $request->limit ?? 10; // Default limit 10 jika tidak ada
+        $limit = $request->limit ?? 10; 
         
         $kasMasuk = Kas::where('type', 'masuk')
-            ->where('is_verified', true) // Menambahkan filter untuk yang sudah diverifikasi
+            ->where('is_verified', true) 
             ->when($startDate, function ($query, $startDate) {
                 return $query->whereDate('created_at', '>=', $startDate);
             })
@@ -208,7 +233,7 @@ class KasController extends Controller
                           });
                 });
             })
-            ->paginate($limit); // Gunakan paginate untuk membatasi jumlah data per halaman
+            ->paginate($limit); 
         
         return view('laporan.kasMasuk', compact('kasMasuk', 'startDate', 'endDate', 'search', 'limit'));
     }
@@ -216,13 +241,11 @@ class KasController extends Controller
     
     public function laporanKasKeluar(Request $request)
     {
-        // Mendapatkan inputan dari request
         $startDate = $request->start_date;
         $endDate = $request->end_date;
         $search = $request->search;
-        $limit = $request->limit ?? 10; // Jika tidak ada limit, default ke 10
+        $limit = $request->limit ?? 10; 
     
-        // Query untuk mengambil data kas keluar
         $kasKeluar = Kas::where('type', 'keluar')
             ->when($startDate, function ($query) use ($startDate) {
                 return $query->whereDate('created_at', '>=', $startDate);
@@ -233,11 +256,42 @@ class KasController extends Controller
             ->when($search, function ($query) use ($search) {
                 return $query->where('description', 'like', "%$search%");
             })
-            // Menambahkan pagination dengan limit
-            ->orderBy('created_at', 'desc') // Menambahkan pengurutan berdasarkan tanggal
+
+            ->orderBy('created_at', 'desc') 
             ->paginate($limit);
     
-        // Mengirim data ke view
         return view('laporan.kasKeluar', compact('kasKeluar', 'startDate', 'endDate', 'search', 'limit'));
-    }       
+    }  
+    public function dataKas(Request $request)
+    {
+        $kas = Kas::where('user_id', auth()->id()) 
+                ->paginate(10); 
+
+        return view('kas.data', compact('kas'));
+    }
+    public function downloadSertifikat($id)
+    {
+        $kas = Kas::findOrFail($id);
+    
+        $pdfSertifikatPath = storage_path("app/public/sertifikat_{$kas->id}.pdf");
+    
+        if (!file_exists($pdfSertifikatPath)) {
+            return redirect()->back()->with('error', 'Sertifikat tidak ditemukan!');
+        }
+    
+        return response()->download($pdfSertifikatPath);
+    }
+    
+    public function downloadKwitansi($id)
+    {
+        $kas = Kas::findOrFail($id);
+    
+        $pdfKwitansiPath = storage_path("app/public/kwitansi_{$kas->id}.pdf");
+    
+        if (!file_exists($pdfKwitansiPath)) {
+            return redirect()->back()->with('error', 'Kwitansi tidak ditemukan!');
+        }
+        return response()->download($pdfKwitansiPath);
+    }
+    
 }
